@@ -19,55 +19,40 @@ async function startBot() {
         version,
         auth: state,
         printQRInTerminal: false,
-        logger: pino({ level: 'info' }), // Increased logging to see errors
-        // This makes WhatsApp think you are logging in from a real Chrome browser
-        browser: ["Chrome (Linux)", "Chrome", "110.0.0.0"] 
+        logger: pino({ level: 'silent' }),
+        browser: ["Mac OS", "Chrome", "121.0.85"] // Better compatibility
     });
 
-    // Handle Pairing Code
     if (!sock.authState.creds.registered) {
-        const phoneNumber = process.env.PHONE_NUMBER;
-        
+        let phoneNumber = process.env.PHONE_NUMBER;
+        // Remove any non-digits
+        phoneNumber = phoneNumber.replace(/[^0-9]/g, '');
+
         console.log(`\n[!] Requesting pairing code for: ${phoneNumber}`);
         
-        // Small delay to ensure socket is ready
         setTimeout(async () => {
             try {
-                let code = await sock.requestPairingCode(phoneNumber);
-                code = code?.match(/.{1,4}/g)?.join("-") || code;
+                // IMPORTANT: We don't format the code with a dash here
+                // We just get the raw code from the library
+                const code = await sock.requestPairingCode(phoneNumber);
                 console.log(`\n\n========================================`);
                 console.log(`✅ YOUR PAIRING CODE: ${code}`);
                 console.log(`========================================\n`);
-                console.log(`Instructions:`);
-                console.log(`1. Open WhatsApp on your phone`);
-                console.log(`2. Go to Linked Devices > Link a Device`);
-                console.log(`3. Tap 'Link with phone number instead'`);
-                console.log(`4. Enter the code above\n`);
             } catch (err) {
-                console.error("❌ Could not generate pairing code:", err.message);
+                console.error("❌ Error requesting code. Try again in 1 minute.");
             }
-        }, 5000);
+        }, 3000);
     }
 
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        
-        if (connection === 'connecting') {
-            console.log('--- Connecting to WhatsApp... ---');
-        }
-
+        const { connection, lastDisconnect } = update;
         if (connection === 'close') {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('--- Connection closed. Reason:', lastDisconnect.error, 'Reconnecting:', shouldReconnect);
             if (shouldReconnect) startBot();
-        } 
-        
-        if (connection === 'open') {
-            console.log('\n========================================');
-            console.log('✅ SUCCESS: WhatsApp Bot is now ONLINE!');
-            console.log('========================================\n');
+        } else if (connection === 'open') {
+            console.log('✅ Connected to WhatsApp!');
         }
     });
 
@@ -78,10 +63,7 @@ async function startBot() {
 
         const sender = msg.key.remoteJid;
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
-
         if (!text) return;
-
-        console.log(`Incoming: ${text}`);
 
         try {
             const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
@@ -97,9 +79,9 @@ async function startBot() {
             const aiReply = response.data.choices[0].message.content;
             await sock.sendMessage(sender, { text: aiReply });
         } catch (error) {
-            console.error("AI Error:", error.message);
+            console.log("AI Error");
         }
     });
 }
 
-startBot().catch(err => console.log("Global Error:", err));
+startBot();
