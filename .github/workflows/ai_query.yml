@@ -1,0 +1,52 @@
+name: OpenRouter to Gmail
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_id:
+        description: 'OpenRouter Model ID (e.g., openauthor/openai/gpt-3.5-turbo)'
+        required: true
+        default: 'google/gemini-pro-1.5'
+      question:
+        description: 'Your Question'
+        required: true
+
+jobs:
+  ask-and-send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Response from OpenRouter
+        id: openrouter
+        run: |
+          RESPONSE=$(curl https://openrouter.ai/api/v1/chat/completions \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.OPENROUTER_API_KEY }}" \
+            -d '{
+              "model": "${{ github.event.inputs.model_id }}",
+              "messages": [{"role": "user", "content": "${{ github.event.inputs.question }}"}]
+            }')
+          
+          # Extract the content from JSON using jq
+          ANSWER=$(echo $RESPONSE | jq -r '.choices[0].message.content')
+          
+          # Save answer to a temporary file to handle special characters
+          echo "$ANSWER" > answer.txt
+          echo "ANSWER_PATH=answer.txt" >> $GITHUB_ENV
+
+      - name: Send Email via Gmail
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          subject: "AI Answer: ${{ github.event.inputs.question }}"
+          to: ${{ secrets.GMAIL_USER }}
+          from: GitHub OpenRouter Bot
+          body: |
+            Question: ${{ github.event.inputs.question }}
+            
+            Model Used: ${{ github.event.inputs.model_id }}
+            
+            Answer:
+          file_attachments: answer.txt
