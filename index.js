@@ -6,42 +6,44 @@ const {
     default: makeWASocket, 
     useMultiFileAuthState, 
     DisconnectReason,
-    fetchLatestBaileysVersion
+    Browsers
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const axios = require('axios');
 
 async function startBot() {
+    // Session folder
     const { state, saveCreds } = await useMultiFileAuthState('auth_info');
-    const { version } = await fetchLatestBaileysVersion();
-
+    
     const sock = makeWASocket({
-        version,
         auth: state,
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
-        browser: ["Mac OS", "Chrome", "121.0.85"] // Better compatibility
+        // Using the built-in Chrome desktop browser identity
+        browser: Browsers.macOS('Desktop')
     });
 
+    // PAIRING CODE LOGIC
     if (!sock.authState.creds.registered) {
         let phoneNumber = process.env.PHONE_NUMBER;
-        // Remove any non-digits
+        // Clean phone number (remove +, spaces, etc)
         phoneNumber = phoneNumber.replace(/[^0-9]/g, '');
 
         console.log(`\n[!] Requesting pairing code for: ${phoneNumber}`);
         
         setTimeout(async () => {
             try {
-                // IMPORTANT: We don't format the code with a dash here
-                // We just get the raw code from the library
-                const code = await sock.requestPairingCode(phoneNumber);
+                // Request code
+                let code = await sock.requestPairingCode(phoneNumber);
                 console.log(`\n\n========================================`);
                 console.log(`✅ YOUR PAIRING CODE: ${code}`);
                 console.log(`========================================\n`);
+                console.log(`Type this code into WhatsApp > Linked Devices > Link with Phone Number.`);
             } catch (err) {
-                console.error("❌ Error requesting code. Try again in 1 minute.");
+                console.error("❌ ERROR: WhatsApp rejected the request. Wait 10 minutes and try again.");
+                console.error(err.message);
             }
-        }, 3000);
+        }, 5000); // 5 second delay to let connection stabilize
     }
 
     sock.ev.on('creds.update', saveCreds);
@@ -52,7 +54,8 @@ async function startBot() {
             const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
             if (shouldReconnect) startBot();
         } else if (connection === 'open') {
-            console.log('✅ Connected to WhatsApp!');
+            console.log('\n✅ BOT IS NOW CONNECTED!');
+            console.log('You can now close this tab. The bot will reply to messages.');
         }
     });
 
@@ -64,6 +67,8 @@ async function startBot() {
         const sender = msg.key.remoteJid;
         const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
         if (!text) return;
+
+        console.log(`Message from ${sender}: ${text}`);
 
         try {
             const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
@@ -78,7 +83,7 @@ async function startBot() {
 
             const aiReply = response.data.choices[0].message.content;
             await sock.sendMessage(sender, { text: aiReply });
-        } catch (error) {
+        } catch (e) {
             console.log("AI Error");
         }
     });
