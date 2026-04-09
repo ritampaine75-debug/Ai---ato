@@ -1,2 +1,3 @@
-2026/04/09-09:50:36.485 a77 Creating DB /home/runner/work/Ai---ato/Ai---ato/session/session/Default/Local Storage/leveldb since it was missing.
-2026/04/09-09:50:36.495 a77 Reusing MANIFEST /home/runner/work/Ai---ato/Ai---ato/session/session/Default/Local Storage/leveldb/MANIFEST-000001
+2026/04/09-09:53:58.008 ac3 Reusing MANIFEST /home/runner/work/Ai---ato/Ai---ato/session/session/Default/Local Storage/leveldb/MANIFEST-000001
+2026/04/09-09:53:58.020 ac3 Recovering log #3
+2026/04/09-09:53:58.021 ac3 Reusing old log /home/runner/work/Ai---ato/Ai---ato/session/session/Default/Local Storage/leveldb/000003.log 
