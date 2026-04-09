@@ -1,43 +1,81 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const QRCode = require('qrcode');
-const { OpenAI } = require('openai');
-const fs = require('fs');
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason 
+} = require('@whiskeysockets/baileys');
+const pino = require('pino');
+const axios = require('axios');
 
-const openai = new OpenAI({
-    baseURL: "https://openrouter.ai/api/v1",
-    apiKey: process.env.OPENROUTER_API_KEY,
-});
+async function startBot() {
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+    
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false, // We use Pairing Code instead
+        logger: pino({ level: 'silent' })
+    });
 
-const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: './session' }),
-    puppeteer: {
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    // Handle Pairing Code
+    if (!sock.authState.creds.registered) {
+        const phoneNumber = process.env.PHONE_NUMBER;
+        if (!phoneNumber) {
+            console.error("PHONE_NUMBER input is missing!");
+            process.exit(1);
+        }
+        
+        setTimeout(async () => {
+            let code = await sock.requestPairingCode(phoneNumber);
+            console.log(`\n\n========================================`);
+            console.log(`YOUR PAIRING CODE: ${code}`);
+            console.log(`========================================\n\n`);
+        }, 3000);
     }
-});
 
-client.on('qr', async (qr) => {
-    console.log('Generating QR Code image...');
-    // Create the image file
-    await QRCode.toFile('./qr.png', qr);
-    console.log('QR Code saved as qr.png. Exiting to upload...');
-    process.exit(0); // Stop the bot so GitHub can save the file
-});
+    sock.ev.on('creds.update', saveCreds);
 
-client.on('ready', () => {
-    console.log('Bot is online!');
-    if (fs.existsSync('./qr.png')) fs.unlinkSync('./qr.png');
-});
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
+        const msg = messages[0];
+        if (!msg.message || msg.key.fromMe) return;
 
-client.on('message', async (msg) => {
-    if (msg.fromMe || msg.isGroupMsg) return;
-    try {
-        const response = await openai.chat.completions.create({
-            model: process.env.AI_MODEL_NAME,
-            messages: [{ role: "user", content: msg.body }],
-        });
-        msg.reply(response.choices[0].message.content);
-    } catch (e) { console.log(e.message); }
-});
+        const sender = msg.key.remoteJid;
+        const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
 
-client.initialize();
+        if (!text) return;
+
+        console.log(`Received message from ${sender}: ${text}`);
+
+        try {
+            // Call OpenRouter API
+            const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
+                model: process.env.AI_MODEL_NAME,
+                messages: [{ role: 'user', content: text }]
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            const aiReply = response.data.choices[0].message.content;
+
+            // Send reply back to WhatsApp
+            await sock.sendMessage(sender, { text: aiReply });
+
+        } catch (error) {
+            console.error("OpenRouter Error:", error.response?.data || error.message);
+        }
+    });
+
+    sock.ev.on('connection.update', (update) => {
+        const { connection, lastDisconnect } = update;
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) startBot();
+        } else if (connection === 'open') {
+            console.log('WhatsApp Bot Connected Successfully!');
+        }
+    });
+}
+
+startBot();
