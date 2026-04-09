@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       model_id:
-        description: 'OpenRouter Model ID (e.g., openauthor/openai/gpt-3.5-turbo)'
+        description: 'OpenRouter Model ID'
         required: true
         default: 'google/gemini-pro-1.5'
       question:
@@ -18,7 +18,8 @@ jobs:
       - name: Get Response from OpenRouter
         id: openrouter
         run: |
-          RESPONSE=$(curl https://openrouter.ai/api/v1/chat/completions \
+          # Get the response from OpenRouter
+          RESPONSE=$(curl -s https://openrouter.ai/api/v1/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.OPENROUTER_API_KEY }}" \
             -d '{
@@ -26,27 +27,32 @@ jobs:
               "messages": [{"role": "user", "content": "${{ github.event.inputs.question }}"}]
             }')
           
-          # Extract the content from JSON using jq
-          ANSWER=$(echo $RESPONSE | jq -r '.choices[0].message.content')
+          # Extract the answer text
+          ANSWER=$(echo "$RESPONSE" | jq -r '.choices[0].message.content')
           
-          # Save answer to a temporary file to handle special characters
-          echo "$ANSWER" > answer.txt
-          echo "ANSWER_PATH=answer.txt" >> $GITHUB_ENV
+          # This special syntax allows multi-line text to be saved to GitHub Environment
+          echo "AI_ANSWER<<EOF" >> $GITHUB_ENV
+          echo "$ANSWER" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Send Email via Gmail
-        uses: dawidd6/action-send-mail@v3
+        uses: dawidd6/action-send-mail@v4
         with:
           server_address: smtp.gmail.com
           server_port: 465
+          secure: true
           username: ${{ secrets.GMAIL_USER }}
           password: ${{ secrets.GMAIL_APP_PASSWORD }}
           subject: "AI Answer: ${{ github.event.inputs.question }}"
           to: ${{ secrets.GMAIL_USER }}
           from: GitHub OpenRouter Bot
           body: |
-            Question: ${{ github.event.inputs.question }}
-            
+            QUESTION: 
+            ${{ github.event.inputs.question }}
+
+            ------------------------------------------------
+            AI ANSWER:
+            ${{ env.AI_ANSWER }}
+            ------------------------------------------------
+
             Model Used: ${{ github.event.inputs.model_id }}
-            
-            Answer:
-          file_attachments: answer.txt
