@@ -1,3 +1,14 @@
+// Add this at the top to fix the crypto error
+if (!global.crypto) {
+    global.crypto = require('crypto').webcrypto;
+}
+
+const { 
+    default: makeWASocket, 
+    useMultiFileAuthState, 
+    DisconnectReason 
+} = require('@whiskeysockets/baileys');
+// ... rest of your code
 const { 
     default: makeWASocket, 
     useMultiFileAuthState, 
