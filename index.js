@@ -16,21 +16,17 @@ const client = new Client({
     }
 });
 
-// When a QR code is generated
 client.on('qr', async (qr) => {
-    console.log('QR Code received. Saving to file...');
-    // Save the QR code as an image file in the repository
-    await QRCode.toFile('./last_qr.png', qr);
-    console.log('QR Code saved as last_qr.png. Stopping to allow GitHub to commit file.');
-    
-    // We exit the process so the GitHub Action can move to the next step (Git Push)
-    process.exit(0); 
+    console.log('Generating QR Code image...');
+    // Create the image file
+    await QRCode.toFile('./qr.png', qr);
+    console.log('QR Code saved as qr.png. Exiting to upload...');
+    process.exit(0); // Stop the bot so GitHub can save the file
 });
 
 client.on('ready', () => {
-    console.log('Bot is logged in and ready!');
-    // Delete the QR image if it exists since we are logged in
-    if (fs.existsSync('./last_qr.png')) fs.unlinkSync('./last_qr.png');
+    console.log('Bot is online!');
+    if (fs.existsSync('./qr.png')) fs.unlinkSync('./qr.png');
 });
 
 client.on('message', async (msg) => {
@@ -41,9 +37,7 @@ client.on('message', async (msg) => {
             messages: [{ role: "user", content: msg.body }],
         });
         msg.reply(response.choices[0].message.content);
-    } catch (e) {
-        console.error("API Error:", e.message);
-    }
+    } catch (e) { console.log(e.message); }
 });
 
 client.initialize();
