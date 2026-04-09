@@ -1,48 +1,48 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const { OpenAI } = require('openai');
+const fs = require('fs');
 
-// Initialize OpenAI client configured for OpenRouter
 const openai = new OpenAI({
     baseURL: "https://openrouter.ai/api/v1",
     apiKey: process.env.OPENROUTER_API_KEY,
-    defaultHeaders: {
-        "HTTP-Referer": "https://github.com/automated-bot", // Optional, for OpenRouter rankings
-        "X-Title": "WhatsApp AI Bot", 
-    }
 });
 
 const client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth({ dataPath: './session' }),
     puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        executablePath: process.env.CHROME_PATH || '/usr/bin/google-chrome'
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
     }
 });
 
-client.on('qr', (qr) => {
-    console.log('SCAN THIS QR CODE IN YOUR WHATSAPP APP:');
-    qrcode.generate(qr, { small: true });
+// When a QR code is generated
+client.on('qr', async (qr) => {
+    console.log('QR Code received. Saving to file...');
+    // Save the QR code as an image file in the repository
+    await QRCode.toFile('./last_qr.png', qr);
+    console.log('QR Code saved as last_qr.png. Stopping to allow GitHub to commit file.');
+    
+    // We exit the process so the GitHub Action can move to the next step (Git Push)
+    process.exit(0); 
 });
 
 client.on('ready', () => {
-    console.log('WhatsApp Bot is connected and ready!');
+    console.log('Bot is logged in and ready!');
+    // Delete the QR image if it exists since we are logged in
+    if (fs.existsSync('./last_qr.png')) fs.unlinkSync('./last_qr.png');
 });
 
 client.on('message', async (msg) => {
-    // Ignore group messages (optional) and messages from yourself
     if (msg.fromMe || msg.isGroupMsg) return;
-
     try {
         const response = await openai.chat.completions.create({
-            model: process.env.AI_MODEL_NAME, // Read model from Secrets
+            model: process.env.AI_MODEL_NAME,
             messages: [{ role: "user", content: msg.body }],
         });
-
-        const aiReply = response.choices[0].message.content;
-        msg.reply(aiReply);
-    } catch (error) {
-        console.error("OpenRouter Error:", error.message);
+        msg.reply(response.choices[0].message.content);
+    } catch (e) {
+        console.error("API Error:", e.message);
     }
 });
 
