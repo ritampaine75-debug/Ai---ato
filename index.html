@@ -1,1 +1,140 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub WebDB</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
+        input, button, textarea { display: block; width: 100%; margin-bottom: 15px; padding: 10px; box-sizing: border-box; }
+        #status { font-weight: bold; margin-top: 20px; }
+        #data-display { border: 1px solid #ccc; padding: 15px; background: #f9f9f9; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>GitHub WebDB</h1>
+    
+    <textarea id="config-input" placeholder="আপনার ম্যাজিক কনফিগটি এখানে পেস্ট করুন" rows="3"></textarea>
+    <button onclick="initializeDB()">ডেটাবেস চালু করুন</button>
+
+    <div id="db-controls" style="display:none;">
+        <h3>ডেটা লিখুন (Write)</h3>
+        <input type="text" id="file-name" placeholder="ফাইলের নাম (যেমন: notes.txt)">
+        <textarea id="file-content" placeholder="ফাইলের বিষয়বস্তু..." rows="5"></textarea>
+        <button onclick="writeData()">GitHub-এ সেভ করুন</button>
+
+        <h3>ডেটা পড়ুন (Read)</h3>
+        <input type="text" id="read-file-name" placeholder="কোন ফাইলটি পড়বেন?">
+        <button onclick="readData()">GitHub থেকে পড়ুন</button>
+        
+        <div id="status"></div>
+        <div id="data-display" style="display:none;"></div>
+    </div>
+
+    <script>
+        let dbConfig = null;
+
+        function initializeDB() {
+            const configStr = document.getElementById('config-input').value.trim();
+            if (!configStr) return alert("দয়া করে কনফিগ দিন!");
+
+            try {
+                // Base64 থেকে ডিকোড করে আসল JSON পাওয়া
+                dbConfig = JSON.parse(atob(configStr));
+                document.getElementById('db-controls').style.display = 'block';
+                document.getElementById('config-input').style.display = 'none';
+                document.querySelector('button[onclick="initializeDB()"]').style.display = 'none';
+                showStatus("ডেটাবেস চালু হয়েছে!");
+            } catch (e) {
+                alert("ভুল কনফিগ! আবার চেষ্টা করুন।");
+                console.error(e);
+            }
+        }
+
+        function showStatus(msg) {
+            document.getElementById('status').textContent = msg;
+        }
+
+        async function writeData() {
+            if (!dbConfig) return;
+            const fileName = document.getElementById('file-name').value.trim();
+            const content = document.getElementById('file-content').value;
+            
+            if (!fileName) return alert("ফাইলের নাম দিন!");
+            showStatus("আপলোড হচ্ছে...");
+
+            const url = `https://api.github.com/repos/${dbConfig.owner}/${dbConfig.repo}/contents/${fileName}`;
+            
+            // ফাইলটি আগে থেকে আছে কিনা তা চেক করা (আপডেটের জন্য sha লাগে)
+            let sha = null;
+            try {
+                const checkResponse = await fetch(url, {
+                    headers: { 'Authorization': `token ${dbConfig.token}` }
+                });
+                if (checkResponse.ok) {
+                    const fileData = await checkResponse.json();
+                    sha = fileData.sha;
+                }
+            } catch (e) {}
+
+            // ডেটা তৈরি
+            const data = {
+                message: `WebDB: ${sha ? 'Update' : 'Create'} ${fileName}`,
+                content: btoa(content), // বিষয়বস্তু Base64 এ এনকোড করতে হবে
+                branch: dbConfig.branch
+            };
+            if (sha) data.sha = sha; // যদি আপডেট হয়, তবে sha দিতে হবে
+
+            try {
+                const response = await fetch(url, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${dbConfig.token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data),
+                });
+
+                if (response.ok) {
+                    showStatus(`"${fileName}" সফলভাবে সেভ হয়েছে!`);
+                    document.getElementById('file-name').value = '';
+                    document.getElementById('file-content').value = '';
+                } else {
+                    const error = await response.json();
+                    showStatus(`ভুল হয়েছে: ${error.message}`);
+                }
+            } catch (error) {
+                showStatus(`Error: ${error.message}`);
+            }
+        }
+
+        async function readData() {
+            if (!dbConfig) return;
+            const fileName = document.getElementById('read-file-name').value.trim();
+            if (!fileName) return alert("কোন ফাইলটি পড়বেন তার নাম দিন!");
+            
+            showStatus("পড়া হচ্ছে...");
+            const displayDiv = document.getElementById('data-display');
+            displayDiv.style.display = 'none';
+
+            // Raw ফাইলের লিংক ব্যবহার করে রিড করা (কোন টোকেন লাগে না যদি পাবলিক রেপো হয়)
+            const url = `https://raw.githubusercontent.com/${dbConfig.owner}/${dbConfig.repo}/${dbConfig.branch}/${fileName}`;
+
+            try {
+                const response = await fetch(url);
+                if (response.ok) {
+                    const text = await response.text();
+                    displayDiv.textContent = text;
+                    displayDiv.style.display = 'block';
+                    showStatus(`"${fileName}" পড়া হয়েছে।`);
+                } else {
+                    showStatus(`ফাইলটি পাওয়া যায়নি বা কোনো ভুল হয়েছে।`);
+                }
+            } catch (error) {
+                showStatus(`Error: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
 
