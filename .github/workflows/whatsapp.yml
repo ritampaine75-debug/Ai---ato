@@ -1,0 +1,30 @@
+name: WhatsApp AI Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      phone_number:
+        description: 'Your Phone Number with Country Code (e.g., 1234567890)'
+        required: true
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Bot
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          AI_MODEL_NAME: ${{ secrets.AI_MODEL_NAME }}
+          PHONE_NUMBER: ${{ github.event.inputs.phone_number }}
+        run: node index.js
