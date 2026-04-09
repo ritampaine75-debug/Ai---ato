@@ -1,9 +1,7 @@
-name: WhatsApp OpenRouter Bot
+name: WhatsApp Bot QR Generator
 
 on:
-  workflow_dispatch:      # Manual Start
-  schedule:
-    - cron: '0 */6 * * *' # Auto-run every 6 hours
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,34 +9,26 @@ permissions:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 18
-
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y google-chrome-stable libnss3 libatk-bridge2.0-0 libxcomposite1 libxdamage1 libxrandr2
+          sudo apt-get install -y google-chrome-stable libnss3 libatk-bridge2.0-0
           npm install
 
-      - name: Run Bot (Generate QR or Start AI)
+      - name: Run Bot
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           AI_MODEL_NAME: ${{ secrets.AI_MODEL_NAME }}
-        run: |
-          # The bot will either run for 5 hours OR exit early if a QR code is generated
-          timeout 5h node index.js || echo "Process finished"
+        run: node index.js || echo "Bot stopped"
 
-      - name: Commit QR Code or Session
+      - name: Upload QR Code to Repository
         run: |
-          git config --global user.name "GitHub Action Bot"
-          git config --global user.email "bot@github.com"
-          git add last_qr.png session/ || true
-          git commit -m "Update WhatsApp Session/QR Code" || exit 0
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add qr.png session/
+          git commit -m "New QR Code generated" || exit 0
           git push
