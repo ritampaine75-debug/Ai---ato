@@ -1,9 +1,12 @@
 name: WhatsApp OpenRouter Bot
 
 on:
+  workflow_dispatch:      # Manual Start
   schedule:
-    - cron: '0 */6 * * *' # Restarts every 6 hours
-  workflow_dispatch:      # Manual start
+    - cron: '0 */6 * * *' # Auto-run every 6 hours
+
+permissions:
+  contents: write
 
 jobs:
   run-bot:
@@ -18,16 +21,24 @@ jobs:
         with:
           node-version: 18
 
-      - name: Install Chrome and Dependencies
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y google-chrome-stable libnss3 libatk-bridge2.0-0 libxcomposite1 libxdamage1 libxrandr2 x11-apps
+          sudo apt-get install -y google-chrome-stable libnss3 libatk-bridge2.0-0 libxcomposite1 libxdamage1 libxrandr2
+          npm install
 
-      - name: Install Project Dependencies
-        run: npm install
-
-      - name: Run Bot
+      - name: Run Bot (Generate QR or Start AI)
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           AI_MODEL_NAME: ${{ secrets.AI_MODEL_NAME }}
-        run: node index.js
+        run: |
+          # The bot will either run for 5 hours OR exit early if a QR code is generated
+          timeout 5h node index.js || echo "Process finished"
+
+      - name: Commit QR Code or Session
+        run: |
+          git config --global user.name "GitHub Action Bot"
+          git config --global user.email "bot@github.com"
+          git add last_qr.png session/ || true
+          git commit -m "Update WhatsApp Session/QR Code" || exit 0
+          git push
