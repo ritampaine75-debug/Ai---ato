@@ -1,0 +1,33 @@
+name: WhatsApp OpenRouter Bot
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Restarts every 6 hours
+  workflow_dispatch:      # Manual start
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Chrome and Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable libnss3 libatk-bridge2.0-0 libxcomposite1 libxdamage1 libxrandr2 x11-apps
+
+      - name: Install Project Dependencies
+        run: npm install
+
+      - name: Run Bot
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          AI_MODEL_NAME: ${{ secrets.AI_MODEL_NAME }}
+        run: node index.js
